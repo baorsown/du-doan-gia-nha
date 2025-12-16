@@ -1,13 +1,15 @@
 import streamlit as st
 import pandas as pd
 from sklearn.linear_model import LinearRegression
+import os
 
 # ===============================
 # LOAD DATA & TRAIN MODEL
 # ===============================
 @st.cache_data
 def load_model():
-    df = pd.read_csv("data_nha.csv")
+    BASE_DIR = os.path.dirname(__file__)
+    df = pd.read_csv(os.path.join(BASE_DIR, "data_nha.csv"))
 
     # Mã hóa quận
     district_map = {
@@ -18,18 +20,34 @@ def load_model():
         "Quận 3": 5
     }
 
-    df["district_code"] = df["district"].map(district_map)
+    # Mã hóa hướng
+    huong_map = {
+        "Đông": 1,
+        "Tây": 2,
+        "Nam": 3,
+        "Bắc": 4
+    }
 
-    X = df[["area", "bedrooms", "bathrooms", "floor", "district_code"]]
+    df["district_code"] = df["district"].map(district_map)
+    df["huong_code"] = df["huong"].map(huong_map)
+
+    X = df[[
+        "area",
+        "bedrooms",
+        "bathrooms",
+        "floor",
+        "district_code",
+        "huong_code"
+    ]]
     y = df["price"]
 
     model = LinearRegression()
     model.fit(X, y)
 
-    return model, district_map
+    return model, district_map, huong_map
 
 
-model, district_map = load_model()
+model, district_map, huong_map = load_model()
 
 # ===============================
 # PAGE CONFIG
@@ -98,10 +116,8 @@ with col1:
     bathrooms = st.selectbox("Số phòng vệ sinh", [1, 2, 3])
     floor = st.selectbox("Số tầng", [1, 2, 3, 4, 5])
 
-    district = st.selectbox(
-        "Quận",
-        list(district_map.keys())
-    )
+    district = st.selectbox("Quận", list(district_map.keys()))
+    huong = st.selectbox("Hướng nhà", list(huong_map.keys()))
 
     st.markdown("</div>", unsafe_allow_html=True)
 
@@ -113,14 +129,13 @@ with col2:
     st.subheader("📊 Kết quả dự đoán")
 
     if st.button("🔮 Dự đoán giá"):
-        district_code = district_map[district]
-
         input_data = [[
             area,
             bedrooms,
             bathrooms,
             floor,
-            district_code
+            district_map[district],
+            huong_map[huong]
         ]]
 
         predicted_price = model.predict(input_data)[0]
