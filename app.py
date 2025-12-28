@@ -1,10 +1,8 @@
 import os
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
 import numpy as np
 from sklearn.linear_model import LinearRegression
-
 
 # ===============================
 # CONFIG
@@ -15,31 +13,33 @@ st.set_page_config(
     layout="wide"
 )
 
+st.title("🏠 Ứng dụng dự đoán & so sánh giá nhà")
+
 # ===============================
-# LOAD DATA
+# LOAD DATA GỐC
 # ===============================
 BASE_DIR = os.path.dirname(__file__)
-DATA_PATH = os.path.join(BASE_DIR, "data_vn.csv")
+DATA_PATH = os.path.join(BASE_DIR, "data_vn_day_du_co_quan.csv")
 
 @st.cache_data
-def load_base_data():
-    df = pd.read_csv(DATA_PATH)
+def load_data(path):
+    df = pd.read_csv(path)
     df.columns = df.columns.str.strip()
     return df
 
-df = load_base_data()
+df = load_data(DATA_PATH)
 
 # ===============================
 # UPLOAD CSV / EXCEL
 # ===============================
-st.sidebar.subheader("📂 Thêm dữ liệu từ file")
+st.sidebar.header("📂 Thêm dữ liệu")
 
 uploaded_file = st.sidebar.file_uploader(
     "Upload CSV hoặc Excel",
     type=["csv", "xlsx"]
 )
 
-if uploaded_file is not None:
+if uploaded_file:
     if uploaded_file.name.endswith(".csv"):
         df_new = pd.read_csv(uploaded_file)
     else:
@@ -53,20 +53,15 @@ if uploaded_file is not None:
 # HIỂN THỊ DỮ LIỆU
 # ===============================
 st.subheader("📋 Dữ liệu hiện có")
-st.caption(f"Tổng số dòng dữ liệu: {len(df)}")
-
-st.dataframe(
-    df,
-    use_container_width=True,
-    height=500
-)
+st.caption(f"Tổng số dòng: {len(df)}")
+st.dataframe(df.head(50), use_container_width=True)
 
 # ===============================
 # ENCODE + TRAIN MODEL
 # ===============================
 df_model = df.copy()
 
-cat_cols = ["LoaiNha", "PhanVung", "LoaiToaNha", "VatLieuNgoai"]
+cat_cols = ["LoaiNha", "PhanVung", "Quan", "LoaiToaNha", "VatLieuNgoai"]
 encode_maps = {}
 
 for col in cat_cols:
@@ -86,6 +81,7 @@ X = df_model[
         "TongSoBsmtSF",
         "LoaiNha",
         "PhanVung",
+        "Quan",
         "LoaiToaNha",
         "VatLieuNgoai"
     ]
@@ -100,7 +96,7 @@ def safe_encode(value, mapping):
     return mapping.get(value, -1)
 
 # ===============================
-# DỰ ĐOÁN
+# INPUT DỰ ĐOÁN
 # ===============================
 st.subheader("🔮 Dự đoán giá nhà")
 
@@ -117,11 +113,15 @@ with c2:
     tongbsmt = st.number_input("Tổng Bsmt", 0, 400, 80)
     loainha = st.selectbox("Loại nhà", df["LoaiNha"].unique())
     phanvung = st.selectbox("Khu vực", df["PhanVung"].unique())
+
+    quan_list = df[df["PhanVung"] == phanvung]["Quan"].unique()
+    quan = st.selectbox("Quận", quan_list)
+
     loaitoanha = st.selectbox("Loại tòa nhà", df["LoaiToaNha"].unique())
     vatlieu = st.selectbox("Vật liệu ngoài", df["VatLieuNgoai"].unique())
 
 # ===============================
-# BUTTON DỰ ĐOÁN + BIỂU ĐỒ
+# BUTTON DỰ ĐOÁN
 # ===============================
 if st.button("🔮 Dự đoán giá & So sánh"):
     input_data = pd.DataFrame([{
@@ -133,6 +133,7 @@ if st.button("🔮 Dự đoán giá & So sánh"):
         "TongSoBsmtSF": tongbsmt,
         "LoaiNha": safe_encode(loainha, encode_maps["LoaiNha"]),
         "PhanVung": safe_encode(phanvung, encode_maps["PhanVung"]),
+        "Quan": safe_encode(quan, encode_maps["Quan"]),
         "LoaiToaNha": safe_encode(loaitoanha, encode_maps["LoaiToaNha"]),
         "VatLieuNgoai": safe_encode(vatlieu, encode_maps["VatLieuNgoai"]),
     }])
@@ -141,49 +142,34 @@ if st.button("🔮 Dự đoán giá & So sánh"):
     st.success(f"💰 Giá dự đoán: {price:,.0f} VNĐ")
 
     # ===============================
-    # BIỂU ĐỒ SO SÁNH THEO KHU
+    # BIỂU ĐỒ 1: THEO KHU VỰC
     # ===============================
     st.subheader("📊 So sánh giá nhà theo khu vực")
 
-    compare_df = (
+    khu_df = (
         df.groupby("PhanVung", as_index=False)["GiaBan"]
         .mean()
     )
 
-    compare_df.loc[
-        compare_df["PhanVung"] == phanvung,
+    khu_df.loc[
+        khu_df["PhanVung"] == phanvung,
         "GiaBan"
     ] = price
 
-    fig, ax = plt.subplots()
+    st.bar_chart(khu_df.set_index("PhanVung"), height=400)
 
-    bars = ax.bar(
-        compare_df["PhanVung"],
-        compare_df["GiaBan"]
+    # ===============================
+    # BIỂU ĐỒ 2: THEO QUẬN
+    # ===============================
+    st.subheader("📊 So sánh giá nhà theo quận")
+
+    quan_df = (
+        df[df["PhanVung"] == phanvung]
+        .groupby("Quan", as_index=False)["GiaBan"]
+        .mean()
     )
 
-    for bar, zone in zip(bars, compare_df["PhanVung"]):
-        if zone == phanvung:
-            bar.set_color("red")
-
-    avg_city = df["GiaBan"].mean()
-    ax.axhline(avg_city, linestyle="--", label="Giá trung bình toàn khu vực")
-    ax.legend()
-
-    ax.set_xlabel("Khu vực")
-    ax.set_ylabel("Giá (VNĐ)")
-
-    for bar in bars:
-        h = bar.get_height()
-        ax.text(
-            bar.get_x() + bar.get_width() / 2,
-            h,
-            f"{h:,.0f}",
-            ha="center",
-            va="bottom",
-            fontsize=9
-        )
-
-    st.pyplot(fig)
-
-
+    if len(quan_df) > 0:
+        st.bar_chart(quan_df.set_index("Quan"), height=400)
+    else:
+        st.info("Không có dữ liệu quận cho khu vực này")
