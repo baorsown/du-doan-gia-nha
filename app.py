@@ -20,7 +20,7 @@ st.title("🏠 Ứng dụng dự đoán & so sánh giá nhà")
 # LOAD DATA GỐC
 # ===============================
 BASE_DIR = os.path.dirname(__file__)
-DATA_PATH = os.path.join(BASE_DIR, "data_vn_day_du_co_quan.csv")
+DATA_PATH = os.path.join(BASE_DIR, "data_vn.csv")
 
 @st.cache_data
 def load_data(path):
@@ -174,4 +174,5 @@ if st.button("🔮 Dự đoán giá & So sánh"):
         st.bar_chart(quan_df.set_index("Quan"), height=400)
     else:
         st.info("Không có dữ liệu quận cho khu vực này")
+
 
