@@ -1,8 +1,9 @@
-import os
 import streamlit as st
 import pandas as pd
 import numpy as np
 from sklearn.linear_model import LinearRegression
+import os
+
 
 # ===============================
 # CONFIG
@@ -173,3 +174,4 @@ if st.button("🔮 Dự đoán giá & So sánh"):
         st.bar_chart(quan_df.set_index("Quan"), height=400)
     else:
         st.info("Không có dữ liệu quận cho khu vực này")
+
