@@ -1,8 +1,9 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
+import numpy as np
 from sklearn.linear_model import LinearRegression
-import os
+
 
 # ===============================
 # CONFIG
@@ -183,3 +184,4 @@ if st.button("🔮 Dự đoán giá & So sánh"):
         )
 
     st.pyplot(fig)
+
