@@ -16,18 +16,16 @@ st.set_page_config(
 st.title("🏠 Ứng dụng dự đoán & so sánh giá nhà")
 
 # ===============================
-# LOAD DATA (AN TOÀN)
+# LOAD DATA GỐC
 # ===============================
 BASE_DIR = os.path.dirname(__file__)
 DATA_PATH = os.path.join(BASE_DIR, "data_vn_day_du_co_quan.csv")
 
 @st.cache_data
 def load_data(path):
-    if os.path.exists(path):
-        df = pd.read_csv(path)
-        df.columns = df.columns.str.strip()
-        return df
-    return pd.DataFrame()
+    df = pd.read_csv(path)
+    df.columns = df.columns.str.strip()
+    return df
 
 df = load_data(DATA_PATH)
 
@@ -41,7 +39,7 @@ uploaded_file = st.sidebar.file_uploader(
     type=["csv", "xlsx"]
 )
 
-if uploaded_file is not None:
+if uploaded_file:
     if uploaded_file.name.endswith(".csv"):
         df_new = pd.read_csv(uploaded_file)
     else:
@@ -52,32 +50,47 @@ if uploaded_file is not None:
     st.sidebar.success(f"✅ Đã thêm {len(df_new)} dòng dữ liệu")
 
 # ===============================
-# KIỂM TRA DATA
-# ===============================
-if df.empty:
-    st.warning("⚠️ Chưa có dữ liệu. Vui lòng upload file CSV/Excel.")
-    st.stop()
-
-# ===============================
 # HIỂN THỊ DỮ LIỆU
 # ===============================
 st.subheader("📋 Dữ liệu hiện có")
 st.caption(f"Tổng số dòng: {len(df)}")
-st.dataframe(df, use_container_width=True, height=400)
+st.dataframe(df.head(50), use_container_width=True)
 
 # ===============================
-# ENCODE + TRAIN MODEL
+# CHUẨN HÓA CỘT (SAFE)
 # ===============================
 df_model = df.copy()
+
+num_cols = [
+    "DienTichLot",
+    "TinhTrangTongThe",
+    "NamXayDung",
+    "NamSuaChua",
+    "BsmtFinSF2",
+    "TongSoBsmtSF",
+    "GiaBan"
+]
+
+for col in num_cols:
+    if col not in df_model.columns:
+        df_model[col] = 0
 
 cat_cols = ["LoaiNha", "PhanVung", "Quan", "LoaiToaNha", "VatLieuNgoai"]
 encode_maps = {}
 
 for col in cat_cols:
+    if col not in df_model.columns:
+        df_model[col] = "KhongXacDinh"
+
     df_model[col] = df_model[col].astype("category")
-    encode_maps[col] = {v: i for i, v in enumerate(df_model[col].cat.categories)}
+    encode_maps[col] = {
+        v: k for k, v in enumerate(df_model[col].cat.categories)
+    }
     df_model[col] = df_model[col].map(encode_maps[col])
 
+# ===============================
+# TRAIN MODEL
+# ===============================
 X = df_model[
     [
         "DienTichLot",
@@ -90,7 +103,7 @@ X = df_model[
         "PhanVung",
         "Quan",
         "LoaiToaNha",
-        "VatLieuNgoai",
+        "VatLieuNgoai"
     ]
 ]
 
@@ -99,8 +112,8 @@ y = df_model["GiaBan"]
 model = LinearRegression()
 model.fit(X, y)
 
-def safe_encode(val, mapping):
-    return mapping.get(val, np.mean(list(mapping.values())))
+def safe_encode(value, mapping):
+    return mapping.get(value, 0)
 
 # ===============================
 # INPUT DỰ ĐOÁN
@@ -118,17 +131,38 @@ with c1:
 
 with c2:
     tongbsmt = st.number_input("Tổng Bsmt", 0, 400, 80)
-    loainha = st.selectbox("Loại nhà", df["LoaiNha"].unique())
-    phanvung = st.selectbox("Khu vực", df["PhanVung"].unique())
 
-    quan_list = df[df["PhanVung"] == phanvung]["Quan"].unique()
+    loainha = st.selectbox(
+        "Loại nhà",
+        df["LoaiNha"].unique() if "LoaiNha" in df.columns else ["KhongXacDinh"]
+    )
+
+    phanvung = st.selectbox(
+        "Khu vực",
+        df["PhanVung"].unique() if "PhanVung" in df.columns else ["KhongXacDinh"]
+    )
+
+    if "Quan" in df.columns and "PhanVung" in df.columns:
+        quan_list = df[df["PhanVung"] == phanvung]["Quan"].unique()
+        if len(quan_list) == 0:
+            quan_list = ["KhongXacDinh"]
+    else:
+        quan_list = ["KhongXacDinh"]
+
     quan = st.selectbox("Quận", quan_list)
 
-    loaitoanha = st.selectbox("Loại tòa nhà", df["LoaiToaNha"].unique())
-    vatlieu = st.selectbox("Vật liệu ngoài", df["VatLieuNgoai"].unique())
+    loaitoanha = st.selectbox(
+        "Loại tòa nhà",
+        df["LoaiToaNha"].unique() if "LoaiToaNha" in df.columns else ["KhongXacDinh"]
+    )
+
+    vatlieu = st.selectbox(
+        "Vật liệu ngoài",
+        df["VatLieuNgoai"].unique() if "VatLieuNgoai" in df.columns else ["KhongXacDinh"]
+    )
 
 # ===============================
-# BUTTON DỰ ĐOÁN + BIỂU ĐỒ
+# BUTTON DỰ ĐOÁN
 # ===============================
 if st.button("🔮 Dự đoán giá & So sánh"):
     input_data = pd.DataFrame([{
@@ -148,28 +182,8 @@ if st.button("🔮 Dự đoán giá & So sánh"):
     price = model.predict(input_data)[0]
     st.success(f"💰 Giá dự đoán: {price:,.0f} VNĐ")
 
-    # ===============================
-    # BIỂU ĐỒ THEO KHU VỰC
-    # ===============================
     st.subheader("📊 So sánh giá theo khu vực")
 
-    khu_df = df.groupby("PhanVung", as_index=False)["GiaBan"].mean()
-    khu_df.loc[khu_df["PhanVung"] == phanvung, "GiaBan"] = price
-
-    st.bar_chart(khu_df.set_index("PhanVung"), height=400)
-
-    # ===============================
-    # BIỂU ĐỒ THEO QUẬN
-    # ===============================
-    st.subheader("📊 So sánh giá theo quận")
-
-    quan_df = (
-        df[df["PhanVung"] == phanvung]
-        .groupby("Quan", as_index=False)["GiaBan"]
-        .mean()
-    )
-
-    if not quan_df.empty:
-        st.bar_chart(quan_df.set_index("Quan"), height=400)
-    else:
-        st.info("Không có dữ liệu quận cho khu vực này")
+    if "PhanVung" in df.columns:
+        khu_df = df.groupby("PhanVung", as_index=False)["GiaBan"].mean()
+        st.bar_chart(khu_df.set_index("PhanVung"), height=400)
