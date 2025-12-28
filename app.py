@@ -4,7 +4,6 @@ import numpy as np
 from sklearn.linear_model import LinearRegression
 import os
 
-
 # ===============================
 # CONFIG
 # ===============================
@@ -17,16 +16,18 @@ st.set_page_config(
 st.title("🏠 Ứng dụng dự đoán & so sánh giá nhà")
 
 # ===============================
-# LOAD DATA GỐC
+# LOAD DATA (AN TOÀN)
 # ===============================
 BASE_DIR = os.path.dirname(__file__)
-DATA_PATH = os.path.join(BASE_DIR, "data_vn.csv")
+DATA_PATH = os.path.join(BASE_DIR, "data_vn_day_du_co_quan.csv")
 
 @st.cache_data
 def load_data(path):
-    df = pd.read_csv(path)
-    df.columns = df.columns.str.strip()
-    return df
+    if os.path.exists(path):
+        df = pd.read_csv(path)
+        df.columns = df.columns.str.strip()
+        return df
+    return pd.DataFrame()
 
 df = load_data(DATA_PATH)
 
@@ -40,7 +41,7 @@ uploaded_file = st.sidebar.file_uploader(
     type=["csv", "xlsx"]
 )
 
-if uploaded_file:
+if uploaded_file is not None:
     if uploaded_file.name.endswith(".csv"):
         df_new = pd.read_csv(uploaded_file)
     else:
@@ -51,11 +52,18 @@ if uploaded_file:
     st.sidebar.success(f"✅ Đã thêm {len(df_new)} dòng dữ liệu")
 
 # ===============================
+# KIỂM TRA DATA
+# ===============================
+if df.empty:
+    st.warning("⚠️ Chưa có dữ liệu. Vui lòng upload file CSV/Excel.")
+    st.stop()
+
+# ===============================
 # HIỂN THỊ DỮ LIỆU
 # ===============================
 st.subheader("📋 Dữ liệu hiện có")
 st.caption(f"Tổng số dòng: {len(df)}")
-st.dataframe(df.head(50), use_container_width=True)
+st.dataframe(df, use_container_width=True, height=400)
 
 # ===============================
 # ENCODE + TRAIN MODEL
@@ -67,9 +75,7 @@ encode_maps = {}
 
 for col in cat_cols:
     df_model[col] = df_model[col].astype("category")
-    encode_maps[col] = {
-        v: k for k, v in enumerate(df_model[col].cat.categories)
-    }
+    encode_maps[col] = {v: i for i, v in enumerate(df_model[col].cat.categories)}
     df_model[col] = df_model[col].map(encode_maps[col])
 
 X = df_model[
@@ -84,7 +90,7 @@ X = df_model[
         "PhanVung",
         "Quan",
         "LoaiToaNha",
-        "VatLieuNgoai"
+        "VatLieuNgoai",
     ]
 ]
 
@@ -93,8 +99,8 @@ y = df_model["GiaBan"]
 model = LinearRegression()
 model.fit(X, y)
 
-def safe_encode(value, mapping):
-    return mapping.get(value, -1)
+def safe_encode(val, mapping):
+    return mapping.get(val, np.mean(list(mapping.values())))
 
 # ===============================
 # INPUT DỰ ĐOÁN
@@ -122,7 +128,7 @@ with c2:
     vatlieu = st.selectbox("Vật liệu ngoài", df["VatLieuNgoai"].unique())
 
 # ===============================
-# BUTTON DỰ ĐOÁN
+# BUTTON DỰ ĐOÁN + BIỂU ĐỒ
 # ===============================
 if st.button("🔮 Dự đoán giá & So sánh"):
     input_data = pd.DataFrame([{
@@ -143,26 +149,19 @@ if st.button("🔮 Dự đoán giá & So sánh"):
     st.success(f"💰 Giá dự đoán: {price:,.0f} VNĐ")
 
     # ===============================
-    # BIỂU ĐỒ 1: THEO KHU VỰC
+    # BIỂU ĐỒ THEO KHU VỰC
     # ===============================
-    st.subheader("📊 So sánh giá nhà theo khu vực")
+    st.subheader("📊 So sánh giá theo khu vực")
 
-    khu_df = (
-        df.groupby("PhanVung", as_index=False)["GiaBan"]
-        .mean()
-    )
-
-    khu_df.loc[
-        khu_df["PhanVung"] == phanvung,
-        "GiaBan"
-    ] = price
+    khu_df = df.groupby("PhanVung", as_index=False)["GiaBan"].mean()
+    khu_df.loc[khu_df["PhanVung"] == phanvung, "GiaBan"] = price
 
     st.bar_chart(khu_df.set_index("PhanVung"), height=400)
 
     # ===============================
-    # BIỂU ĐỒ 2: THEO QUẬN
+    # BIỂU ĐỒ THEO QUẬN
     # ===============================
-    st.subheader("📊 So sánh giá nhà theo quận")
+    st.subheader("📊 So sánh giá theo quận")
 
     quan_df = (
         df[df["PhanVung"] == phanvung]
@@ -170,9 +169,7 @@ if st.button("🔮 Dự đoán giá & So sánh"):
         .mean()
     )
 
-    if len(quan_df) > 0:
+    if not quan_df.empty:
         st.bar_chart(quan_df.set_index("Quan"), height=400)
     else:
         st.info("Không có dữ liệu quận cho khu vực này")
-
-
